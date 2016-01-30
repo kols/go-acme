@@ -14,9 +14,19 @@ import (
 
 const (
 	ACMEChallengePathPrefix = "/.well-known/acme-challenge/"
-	LetsEncryptStaging      = "https://acme-staging.api.letsencrypt.org/directory"
-	LetsEncryptProduction   = "https://acme-v01.api.letsencrypt.org/directory"
 )
+
+type LetsEncryptAPIEnv string
+
+const (
+	LetsEncryptStaging LetsEncryptAPIEnv = "staging"
+	LetsEncryptProd                      = "prod"
+)
+
+var letsEncryptAPIs = map[LetsEncryptAPIEnv]string{
+	LetsEncryptStaging: "https://acme-staging.api.letsencrypt.org/directory",
+	LetsEncryptProd:    "https://acme-v01.api.letsencrypt.org/directory",
+}
 
 var cfg struct {
 	KeyPath string
@@ -32,7 +42,7 @@ func init() {
 	flag.StringVar(&cfg.KeyPath, "key", "", "path to account key")
 	flag.StringVar(&cfg.Addr, "addr", "127.0.0.1:81", "challenge server address")
 	flag.StringVar(&cfg.Domains, "domains", "", "comma-separated list of up to 100 domain names")
-	flag.StringVar(&cfg.API, "api", LetsEncryptProduction, "ACME API URL")
+	flag.StringVar(&cfg.API, "api", LetsEncryptProd, "Let's Encrypt acme API endpoint, ['staging', 'prod']")
 	flag.IntVar(&cfg.Bits, "bit", 2048, "domain key length")
 	flag.IntVar(&cfg.GenRSA, "genrsa", 0, "generate RSA private key of the given bits in length")
 	flag.Parse()
@@ -70,12 +80,24 @@ func main() {
 	}
 
 	key, err := readRSAKey(keyReader)
+	log.Print("Key read and parsed")
 	if err != nil {
 		log.Fatalf("Failed to parse key: %s", err)
 	}
 
-	log.Printf("Connecting to ACME server at %s", cfg.API)
-	acme, err := OpenACME(cfg.API, key)
+	var (
+		api string
+		ok  bool
+	)
+	if api, ok = letsEncryptAPIs[LetsEncryptAPIEnv(cfg.API)]; !ok {
+		if !strings.HasPrefix(cfg.API, "https") {
+			log.Fatalf("Invalid acme api: %s", cfg.API)
+		} else {
+			api = cfg.API
+		}
+	}
+	log.Printf("Connecting to ACME server at %s", api)
+	acme, err := OpenACME(api, key)
 	if err != nil {
 		log.Fatalf("Failed to connect to ACME server: %s", err)
 	}
