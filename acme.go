@@ -94,9 +94,10 @@ func (a *ACME) do(url string, payload []byte) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	go func() { // put back a new nonce
-		a.noncePool <- rsp.Header.Get("Replay-Nonce")
-	}()
+	select {
+	case a.noncePool <- rsp.Header.Get("Replay-Nonce"):
+	default: // nonce pool abundant, discard
+	}
 	return rsp, nil
 }
 
