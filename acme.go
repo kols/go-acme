@@ -335,3 +335,24 @@ func (a *ACME) NewCert(csr []byte) (domainCrt *x509.Certificate, issuerCrt *x509
 	}
 	return domainCrt, issuerCrt, nil
 }
+
+// Revoke a certificate
+func (a *ACME) RevokeCert(c []byte) error {
+	payload, err := json.Marshal(map[string]interface{}{
+		"resource":    "revoke-cert",
+		"certificate": b64(c),
+	})
+	if err != nil {
+		return err
+	}
+
+	rsp, err := a.do(a.Dir.RevokeCert, payload)
+	if err != nil {
+		return err
+	}
+	if rsp.StatusCode != 200 {
+		return fmt.Errorf("failed to revoke certificate: HTTP %s", rsp.Status)
+	}
+
+	return nil
+}

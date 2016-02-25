@@ -6,6 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"flag"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -35,6 +37,7 @@ var cfg struct {
 	API     string
 	Bits    int
 	GenRSA  int
+	Revoke  string
 }
 
 func init() {
@@ -45,6 +48,7 @@ func init() {
 	flag.StringVar(&cfg.API, "api", LetsEncryptProd, "Let's Encrypt acme API endpoint, ['staging', 'prod']")
 	flag.IntVar(&cfg.Bits, "bit", 2048, "domain key length")
 	flag.IntVar(&cfg.GenRSA, "genrsa", 0, "generate RSA private key of the given bits in length")
+	flag.StringVar(&cfg.Revoke, "revoke", "", "path to certificate that need to be revoked")
 	flag.Parse()
 }
 
@@ -96,10 +100,40 @@ func main() {
 			api = cfg.API
 		}
 	}
+
 	log.Printf("Connecting to ACME server at %s", api)
 	acme, err := OpenACME(api, key)
 	if err != nil {
 		log.Fatalf("Failed to connect to ACME server: %s", err)
+	}
+
+	// will revoke certificate and terminate the program
+	if cfg.Revoke != "" {
+		var yorn string
+		fmt.Printf("Confirm revoke of certificate: %s? [y/N]", cfg.Revoke)
+		_, err := fmt.Scanf("%s\n", &yorn)
+		if err != nil || yorn != "y" {
+			os.Exit(1)
+		}
+		log.Printf("Revoking certificate: %s", cfg.Revoke)
+		certFile, err := os.Open(cfg.Revoke)
+		if err != nil {
+			log.Fatalf("Failed to open certificate: %s", cfg.Revoke)
+		}
+
+		certPem, err := ioutil.ReadAll(certFile)
+		if err != nil {
+			log.Fatalf("Failed to read certificate: %s", cfg.Revoke)
+		}
+		b, _ := pem.Decode(certPem)
+		if b == nil {
+			log.Fatal("empty")
+		}
+		if err = acme.RevokeCert(b.Bytes); err != nil {
+			log.Fatalf("Failed to revoke certificate: %s", err)
+		}
+		log.Println("Certificate revoked successfully")
+		os.Exit(0)
 	}
 
 	// start the challenge server in background
